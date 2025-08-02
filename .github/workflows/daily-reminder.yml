@@ -15,6 +15,8 @@ jobs:
     permissions:
       issues: read # Give the job read-only permission to issues
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v
       - name: Get current week number
         id: week
         # Note: %U is week of year (Sunday as first day). %V is ISO week number (Monday as first day).
