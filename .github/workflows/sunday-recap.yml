@@ -1,0 +1,40 @@
+# .github/workflows/sunday-recap.yml
+name: Sunday Weekly Recap & Preview
+
+on:
+  schedule:
+    # Runs at 20:00 UTC on every Sunday
+    - cron: '0 20 * * 0'
+  workflow_dispatch:
+
+jobs:
+  recap:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+    steps:
+      - name: Get week numbers
+        id: weeks
+        run: |
+          # Note: date +%U is week of year (Sunday as first day)
+          echo "PAST_WEEK=$(date -d 'yesterday' +%U)" >> $GITHUB_OUTPUT
+          echo "NEXT_WEEK=$(date -d 'tomorrow' +%U)" >> $GITHUB_OUTPUT
+
+      - name: Find past and next week's issues
+        id: issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PAST_ISSUE_DATA=$(gh issue list --search "in:title [Week ${{ steps.weeks.outputs.PAST_WEEK }}]" --json title,url --limit 1)
+          NEXT_ISSUE_DATA=$(gh issue list --search "in:title [Week ${{ steps.weeks.outputs.NEXT_WEEK }}]" --json title,url --limit 1)
+
+          # Use jq to prepare outputs for the next step
+          echo "PAST_TITLE=$(echo $PAST_ISSUE_DATA | jq -r '.[0].title // "Not Found"')" >> $GITHUB_OUTPUT
+          echo "PAST_URL=$(echo $PAST_ISSUE_DATA | jq -r '.[0].url // ""')" >> $GITHUB_OUTPUT
+          echo "NEXT_TITLE=$(echo $NEXT_ISSUE_DATA | jq -r '.[0].title // "Not Found"')" >> $GITHUB_OUTPUT
+          echo "NEXT_URL=$(echo $NEXT_ISSUE_DATA | jq -r '.[0].url // ""')" >> $GITHUB_OUTPUT
+
+      - name: Send recap notification
+        run: |
+          MESSAGE="{\"content\": \"**Weekly Sync!** 🗓️\\n\\n**Last Week's Review:**\\nCongrats on finishing *'${{ steps.issues.outputs.PAST_TITLE }}'*. Take a moment to reflect on what you learned!\\n<${{ steps.issues.outputs.PAST_URL }}>\\n\\n**Next Week's Preview:**\\nGet ready for *'${{ steps.issues.outputs.NEXT_TITLE }}'*. A new challenge awaits!\\n<${{ steps.issues.outputs.NEXT_URL }}>\\n\\nHave a great week!\"}"
+          curl -H "Content-Type: application/json" -X POST -d "$MESSAGE" "${{ secrets.NOTIFICATION_WEBHOOK_URL }}"
