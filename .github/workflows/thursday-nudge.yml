@@ -1,0 +1,34 @@
+# .github/workflows/thursday-nudge.yml
+name: Thursday Nudge
+
+on:
+  schedule:
+    # Runs at 15:00 UTC on every Thursday
+    - cron: '0 15 * * 4'
+  workflow_dispatch:
+
+jobs:
+  nudge:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+    steps:
+      - name: Get current week number
+        id: week
+        run: echo "NUM=$(date +%U)" >> $GITHUB_OUTPUT
+
+      - name: Find current week's issue
+        id: issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ISSUE_DATA=$(gh issue list --search "in:title [Week ${{ steps.week.outputs.NUM }}]" --json title,url --limit 1)
+          if [[ -z "$ISSUE_DATA" || "$ISSUE_DATA" == "[]" ]]; then exit 0; fi
+          echo "TITLE=$(echo $ISSUE_DATA | jq -r '.[0].title')" >> $GITHUB_OUTPUT
+          echo "URL=$(echo $ISSUE_DATA | jq -r '.[0].url')" >> $GITHUB_OUTPUT
+
+      - name: Send nudge notification
+        if: steps.issue.outputs.title
+        run: |
+          MESSAGE="{\"content\": \"**Thursday Nudge!** 🚀\\nHow is progress on *'${{ steps.issue.outputs.title }}'*?\\nPlan a final push to avoid a weekend crunch!\\n\\n🔗 <${{ steps.issue.outputs.url }}>\"}"
+          curl -H "Content-Type: application/json" -X POST -d "$MESSAGE" "${{ secrets.NOTIFICATION_WEBHOOK_URL }}"
