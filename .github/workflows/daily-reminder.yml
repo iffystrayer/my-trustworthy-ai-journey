@@ -1,0 +1,45 @@
+# .github/workflows/daily-reminder.yml
+name: Daily Progress Reminder
+
+on:
+  schedule:
+    # Runs at 14:00 UTC (e.g., 9 AM CST) every day from Monday to Friday.
+    # Customize this for your timezone using a site like crontab.guru.
+    - cron: '0 14 * * 1-5'
+  # Allows you to run this workflow manually from the Actions tab for testing
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read # Give the job read-only permission to issues
+    steps:
+      - name: Get current week number
+        id: week
+        # Note: %U is week of year (Sunday as first day). %V is ISO week number (Monday as first day).
+        run: echo "NUM=$(date +%U)" >> $GITHUB_OUTPUT
+
+      - name: Find current week's issue
+        id: issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # gh issue list searches for open issues with the week number in the title
+          ISSUE_DATA=$(gh issue list --search "in:title [Week ${{ steps.week.outputs.NUM }}]" --json title,url --limit 1)
+          if [[ -z "$ISSUE_DATA" || "$ISSUE_DATA" == "[]" ]]; then
+            echo "No issue found for Week ${{ steps.week.outputs.NUM }}. Exiting."
+            exit 0
+          fi
+          # Use jq to parse the JSON and set outputs
+          echo "TITLE=$(echo $ISSUE_DATA | jq -r '.[0].title')" >> $GITHUB_OUTPUT
+          echo "URL=$(echo $ISSUE_DATA | jq -r '.[0].url')" >> $GITHUB_OUTPUT
+
+      - name: Send notification to Slack/Discord
+        if: steps.issue.outputs.title
+        run: |
+          # Formats the message payload. The format works for both Slack and Discord.
+          MESSAGE="{\"content\": \"**Daily Focus: ** ☀️\\nYour goal this week is *'${{ steps.issue.outputs.title }}'*.\\nWhat's one small step you can take today?\\n\\n🔗 <${{ steps.issue.outputs.url }}>\"}"
+
+          # Send the message using curl to the webhook URL stored in secrets
+          curl -H "Content-Type: application/json" -X POST -d "$MESSAGE" "${{ secrets.NOTIFICATION_WEBHOOK_URL }}"
